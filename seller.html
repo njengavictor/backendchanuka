@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chanuka Seller Portal - Live Orders & Chat</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+</head>
+<body class="bg-slate-900 text-white min-h-screen">
+
+    <header class="p-4 border-b border-slate-800 flex justify-between items-center max-w-4xl mx-auto">
+        <h1 class="font-bold text-xl text-amber-400">Chanuka Seller Hub</h1>
+        <div id="notification-badge" class="bg-red-500 text-white text-xs px-3 py-1 rounded-full font-bold animate-pulse hidden">
+            🔔 New Buyer Message!
+        </div>
+    </header>
+
+    <main class="max-w-4xl mx-auto p-4 grid md:grid-cols-3 gap-4">
+
+        <!-- Active Chats List -->
+        <div class="bg-slate-800 p-4 rounded-2xl border border-slate-700">
+            <h2 class="text-sm font-bold text-slate-400 mb-3 uppercase tracking-wider">Active Buyer Conversations</h2>
+            <div id="chats-list" class="space-y-2">
+                <p class="text-xs text-slate-500">Listening for buyer chats...</p>
+            </div>
+        </div>
+
+        <!-- Active Chat Window -->
+        <div class="md:col-span-2 bg-slate-800 rounded-2xl border border-slate-700 flex flex-col h-[500px]">
+            <div class="p-3 border-b border-slate-700 font-bold text-sm text-slate-300" id="current-chat-header">
+                Select a chat to reply
+            </div>
+            
+            <div id="seller-messages" class="flex-1 p-4 overflow-y-auto space-y-3 text-sm text-slate-200">
+                <p class="text-center text-xs text-slate-500 mt-10">Select a buyer thread from the left menu to communicate.</p>
+            </div>
+
+            <form id="seller-form" class="p-3 border-t border-slate-700 flex gap-2">
+                <input id="seller-input" type="text" placeholder="Reply to buyer..." class="flex-1 bg-slate-900 border border-slate-700 rounded-xl px-4 py-2 text-sm text-white focus:outline-none" disabled>
+                <button type="submit" id="send-btn" class="bg-amber-500 text-slate-900 font-bold px-4 py-2 rounded-xl opacity-50 cursor-not-allowed" disabled>Send</button>
+            </form>
+        </div>
+    </main>
+
+    <!-- Audio Alert -->
+    <audio id="notif-sound" src="https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3" preload="auto"></audio>
+
+    <script>
+        const SUPABASE_URL = "https://YOUR_PROJECT_ID.supabase.co";
+        const SUPABASE_KEY = "YOUR_ANON_KEY";
+        const supabase = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+        let activeChatId = null;
+
+        async function loadChats() {
+            const { data: chats } = await supabase.from('chats').select('*').order('created_at', { ascending: false });
+            const list = document.getElementById('chats-list');
+            list.innerHTML = '';
+
+            chats?.forEach(chat => {
+                const btn = document.createElement('button');
+                btn.className = "w-full text-left p-3 rounded-xl bg-slate-900 hover:bg-slate-700 transition border border-slate-800 space-y-1";
+                btn.onclick = () => selectChat(chat);
+                btn.innerHTML = `
+                    <p class="font-bold text-sm text-amber-300">${chat.product_name}</p>
+                    <p class="text-xs text-slate-400">Price: KSh ${chat.price}</p>
+                `;
+                list.appendChild(btn);
+            });
+        }
+
+        async function selectChat(chat) {
+            activeChatId = chat.id;
+            document.getElementById('current-chat-header').innerText = `Chatting regarding: ${chat.product_name}`;
+            document.getElementById('seller-input').disabled = false;
+            document.getElementById('send-btn').disabled = false;
+            document.getElementById('send-btn').classList.remove('opacity-50', 'cursor-not-allowed');
+
+            loadSellerMessages();
+        }
+
+        async function loadSellerMessages() {
+            const { data: messages } = await supabase.from('messages').select('*').eq('chat_id', activeChatId).order('created_at', { ascending: true });
+            const box = document.getElementById('seller-messages');
+            box.innerHTML = '';
+            messages?.forEach(renderSellerMessage);
+        }
+
+        function renderSellerMessage(msg) {
+            const box = document.getElementById('seller-messages');
+            const isSeller = msg.sender === 'seller';
+            const div = document.createElement('div');
+            div.className = `flex ${isSeller ? 'justify-end' : 'justify-start'}`;
+            div.innerHTML = `
+                <div class="max-w-[75%] p-3 rounded-2xl ${isSeller ? 'bg-amber-500 text-slate-950 font-medium' : 'bg-slate-700 text-slate-100'}">
+                    <p>${msg.text}</p>
+                </div>
+            `;
+            box.appendChild(div);
+            box.scrollTop = box.scrollHeight;
+        }
+
+        // Send Seller Reply
+        document.getElementById('seller-form').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const input = document.getElementById('seller-input');
+            const text = input.value.trim();
+            if (!text || !activeChatId) return;
+
+            input.value = '';
+            await supabase.from('messages').insert([{ chat_id: activeChatId, sender: 'seller', text }]);
+        });
+
+        // Listen for ANY new messages across chats to trigger notifications
+        supabase.channel('public:messages')
+            .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages' }, payload => {
+                if (payload.new.sender === 'buyer') {
+                    // Play notification sound & show badge
+                    document.getElementById('notif-sound').play().catch(()=>{});
+                    document.getElementById('notification-badge').classList.remove('hidden');
+                    
+                    if (payload.new.chat_id === activeChatId) {
+                        renderSellerMessage(payload.new);
+                    }
+                }
+            })
+            .subscribe();
+
+        loadChats();
+    </script>
+</body>
+</html>

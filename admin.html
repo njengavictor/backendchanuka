@@ -1,0 +1,16 @@
+<h2>All Buyer-Seller Chats - Middle Man</h2>
+<div id="allChats"></div>
+<script>
+// Load all conversations
+async function loadAll() {
+  const { data } = await supabase.from('conversations').select('*').order('created_at', {ascending:false});
+  document.getElementById('allChats').innerHTML = data.map(c => `
+    <div style="border:1px solid #ccc; padding:10px; margin:10px;">
+      <b>${c.product_name}</b> - ${c.buyer_name} ↔ ${c.seller_name}<br>
+      Last: ${c.last_message}<br>
+      <a href="chat.html?id=${c.id}">Open & Moderate as Admin</a>
+    </div>
+  `).join('');
+}
+loadAll();
+</script>
