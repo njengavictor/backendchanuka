@@ -7,16 +7,11 @@
     "express-rate-limit": "^8.7.1",
     "helmet": "^8.3.0"
   },
-  "name": "myfirst-project",
+  "name": "chanuka-backend",
   "version": "1.0.0",
-  "description": "",
-  "main": "main.js",
+  "main": "chanuka.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1",
-    "start": "node server.js"
+    "start": "node chanuka.js"
   },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
   "type": "commonjs"
 }
