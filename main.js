@@ -1,26 +1,13 @@
-import { supabase } from './supabase.js';
-
 window.startChat = async function(productId, productName, sellerId, sellerName) {
   const buyerId = localStorage.getItem('userId') || 'buyer_' + Date.now();
   const buyerName = localStorage.getItem('userName') || 'Guest Buyer';
   localStorage.setItem('userId', buyerId);
-
-  const { data, error } = await supabase.from('conversations').insert({
-    product_id: productId,
-    product_name: productName,
-    buyer_id: buyerId,
-    buyer_name: buyerName,
-    seller_id: sellerId,
-    seller_name: sellerName,
-    last_message: 'Started conversation'
-  }).select().single();
-
-  if(error){ alert(error.message); return; }
-  window.location.href = `chat.html?id=${data.id}`;
+  alert("Chat for " + productName + " - Seller: " + sellerName);
+  window.location.href = `chat.html?product=${productId}`;
 }
 
 function parsePrice(text) {
-    return Number(String(text).replace(/[^0-9.]/g, "")) || 0);
+    return Number(String(text).replace(/[^0-9.]/g, "")) || 0;
 }
 function formatPrice(amount) {
     return "KSh " + amount.toLocaleString("en-KE");
@@ -248,11 +235,26 @@ cartPanel.querySelector("[data-cart-clear]").addEventListener("click", function 
     cart = []; saveData("chanukaCart", cart); renderCart();
 });
 
-// --- FIXED CHECKOUT - CORRECT BACKEND URL ---
 cartPanel.querySelector("[data-cart-checkout]").addEventListener("click", async () => {
     if (cart.length === 0) { showToast("Your cart is empty"); return; }
+
+    const loggedUser = localStorage.getItem("chanuka_user") || localStorage.getItem("chanukaUser") || localStorage.getItem("userId");
+    if (!loggedUser) {
+        showToast("Please create an account first");
+        localStorage.setItem("redirectAfterLogin", "cart");
+        window.location.href = "register.html";
+        return;
+    }
+
+    const stations = ["cooperative on campus", "Gataka - Destiny", "G-place Gataka", "Eldoret - Zion mall", "Delivery within gataka (Ksh 150)"];
+    let choice = prompt("Choose pickup station:\n" + stations.map((s,i) => `${i+1}. ${s}`).join("\n") + "\n\nEnter number (1-5):");
+    if (!choice) return;
+    const idx = parseInt(choice) - 1;
+    if (isNaN(idx) || idx < 0 || idx >= stations.length) { showToast("Invalid station"); return; }
+    const selectedStation = stations[idx];
+
     const totalPrice = cart.reduce((sum, item) => sum + item.price * item.quantity, 0);
-    let phone = prompt("Enter M-Pesa number to pay: " + formatPrice(totalPrice) + "\n(e.g. 0712345678 or 2547...)");
+    let phone = prompt("Enter M-Pesa number to pay: " + formatPrice(totalPrice) + " | Pickup: " + selectedStation + "\n(e.g. 0712345678)");
     if (!phone) return;
     const normalized = normalizePhoneFrontend(phone);
     if (!normalized) { showToast("Invalid phone. Use 07... or 2547..."); return; }
@@ -268,7 +270,7 @@ cartPanel.querySelector("[data-cart-checkout]").addEventListener("click", async 
         const res = await fetch(`${BACKEND_URL}/stkpush`, {
           method: "POST",
           headers: {"Content-Type":"application/json"},
-          body: JSON.stringify({ phone: normalized, amount: totalPrice })
+          body: JSON.stringify({ phone: normalized, amount: totalPrice, station: selectedStation })
         });
         const data = await res.json();
         console.log("Server response:", data);
@@ -276,7 +278,7 @@ cartPanel.querySelector("[data-cart-checkout]").addEventListener("click", async 
             showToast("STK Sent! Check your phone " + normalized + " and enter PIN");
             cart = []; saveData("chanukaCart", cart); renderCart(); closeCart();
         } else {
-            showToast("Failed: " + (data.errorMessage || data.error || data.ResultDesc || JSON.stringify(data).slice(0,100)));
+            showToast("Failed: " + (data.errorMessage || data.error || data.ResultDesc || "Try again"));
         }
     } catch (err) {
         console.error(err);
